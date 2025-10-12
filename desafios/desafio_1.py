@@ -1,63 +1,159 @@
+from dataclasses import dataclass, field
+from decimal import Decimal
+from typing import List, Optional
+from itertools import count
+
 menu = """
 
-[d] Depositar
-[s] Sacar
-[e] Extrato
-[q] Sair
+[u] Register user
+[c] Create account
+[d] Deposit
+[w] Withdraw
+[s] Statement
+[q] Quit
 
 => """
 
-saldo = 0
-limite = 500
-extrato = ""
-numero_saques = 0
-LIMITE_SAQUES = 3
+WITHDRAW_LIMIT = Decimal("500")
+WITHDRAW_MAX_COUNT = 3
 
-def depositar():
-    global saldo, extrato
-    valor_deposito = float(input("informe o valor para deposito: "))
-    if valor_deposito <= 0:
-        print("Operação falhou! O valor informado é inválido.")
+@dataclass
+class User:
+    id: int
+    name: str
+    email: str
+
+@dataclass
+class Account:
+    id: int
+    user_id: int
+    number: str
+    balance: Decimal = Decimal("0")
+    statement: List[str] = field(default_factory=list)
+    withdraw_count: int = 0
+
+USERS: List[User] = []
+ACCOUNTS: List[Account] = []
+
+_user_seq = count(start=1)
+_account_seq = count(start=1)
+
+def find_user_by_email(email: str) -> Optional[User]:
+    for u in USERS:
+        if u.email.lower().strip() == email.lower().strip():
+            return u
+    return None
+
+def find_account_by_number(number: str) -> Optional[Account]:
+    for a in ACCOUNTS:
+        if a.number.strip() == number.strip():
+            return a
+    return None
+
+def register_user() -> None:
+    name = input("Name: ").strip()
+    email = input("Email: ").strip()
+    if not name or not email:
+        print("Invalid data.")
         return
-    saldo += valor_deposito
-    print("Operacao realizada com sucesso.")
-    extrato += f"Deposito: R$ {valor_deposito:.2f}\n"
-
-def saque():
-    global saldo, limite, numero_saques, LIMITE_SAQUES, extrato
-    valor_saque = float(input("informe o valor para saque: "))
-    saldo_insuficiente = saldo < valor_saque
-    saque_fora_limite = valor_saque >= limite
-    tentativa_invalida = numero_saques >= LIMITE_SAQUES
-    valor_invalido = valor_saque <= 0
-    if saldo_insuficiente or saque_fora_limite or tentativa_invalida or valor_invalido:
-        print("SAQUE NAO AUTORIZADO")
-        print("limite de saldo excedido ou valor maior que o limite diario")
+    if find_user_by_email(email):
+        print("Email already registered.")
         return
-    numero_saques += 1
-    saldo -= valor_saque
-    print(f"Saque de {valor_saque} realizado com sucesso")
-    extrato += f"Saque: R$ {valor_saque:.2f}\n"
+    user = User(id=next(_user_seq), name=name, email=email)
+    USERS.append(user)
+    print(f"User created with id {user.id}")
 
-def exibir_extrato():
-    global extrato, saldo
-    print("\n================ EXTRATO ================")
-    print("Não foram realizadas movimentações." if not extrato else extrato)
-    print(f"\nSaldo: R$ {saldo:.2f}")
-    print("==========================================")
+def create_account() -> None:
+    email = input("Email of the user: ").strip()
+    user = find_user_by_email(email)
+    if not user:
+        print("User not found.")
+        return
+    number = f"ACC-{next(_account_seq):06d}"
+    account = Account(id=len(ACCOUNTS) + 1, user_id=user.id, number=number)
+    ACCOUNTS.append(account)
+    print(f"Account created with number {account.number} for user id {user.id}")
 
-while True:
+def deposit() -> None:
+    number = input("Account number: ").strip()
+    account = find_account_by_number(number)
+    if not account:
+        print("Account not found.")
+        return
+    value_str = input("Amount to deposit: ").strip()
+    try:
+        value = Decimal(value_str)
+    except:
+        print("Invalid amount.")
+        return
+    if value <= 0:
+        print("Invalid amount.")
+        return
+    account.balance += value
+    account.statement.append(f"Deposit: R$ {value:.2f}")
+    print("Deposit completed.")
 
-    opcao = input(menu)
+def withdraw() -> None:
+    number = input("Account number: ").strip()
+    account = find_account_by_number(number)
+    if not account:
+        print("Account not found.")
+        return
+    value_str = input("Amount to withdraw: ").strip()
+    try:
+        value = Decimal(value_str)
+    except:
+        print("Invalid amount.")
+        return
+    if value <= 0:
+        print("Invalid amount.")
+        return
+    if value > WITHDRAW_LIMIT:
+        print("Withdrawal exceeds per-transaction limit.")
+        return
+    if account.withdraw_count >= WITHDRAW_MAX_COUNT:
+        print("Daily withdrawal limit reached.")
+        return
+    if account.balance < value:
+        print("Insufficient funds.")
+        return
+    account.balance -= value
+    account.withdraw_count += 1
+    account.statement.append(f"Withdraw: R$ {value:.2f}")
+    print("Withdrawal completed.")
 
-    if opcao == "d":
-        depositar()
-    elif opcao == "s":
-        saque()
-    elif opcao == "e":
-        exibir_extrato()
-    elif opcao == "q":
-        break
-
+def show_statement() -> None:
+    number = input("Account number: ").strip()
+    account = find_account_by_number(number)
+    if not account:
+        print("Account not found.")
+        return
+    print("\n=========== STATEMENT ===========")
+    if not account.statement:
+        print("No transactions.")
     else:
-        print("Operação inválida, por favor selecione novamente a operação desejada.")
+        for line in account.statement:
+            print(line)
+    print(f"\nBalance: R$ {account.balance:.2f}")
+    print("=================================")
+
+def main() -> None:
+    while True:
+        option = input(menu).strip().lower()
+        if option == "u":
+            register_user()
+        elif option == "c":
+            create_account()
+        elif option == "d":
+            deposit()
+        elif option == "w":
+            withdraw()
+        elif option == "s":
+            show_statement()
+        elif option == "q":
+            break
+        else:
+            print("Invalid option.")
+
+if __name__ == "__main__":
+    main()
